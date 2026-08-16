@@ -1,0 +1,6 @@
+{
+  "name": "College OS",
+  "description": "Spatial 3D Academic Operating System featuring student, faculty, HOD, and admin portals with Vision Pro glass aesthetics, holographic depth, 3D analytics, AI academic assistant, timetable generator, and at-risk student prediction.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

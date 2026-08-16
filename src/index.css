@@ -1,0 +1,236 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --spatial-bg: #030712;
+    --spatial-surface: rgba(15, 23, 42, 0.75);
+    --spatial-border: rgba(255, 255, 255, 0.12);
+    --spatial-glow: rgba(99, 102, 241, 0.15);
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    background-color: #030712;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.2) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.18) 0px, transparent 50%),
+      radial-gradient(at 50% 50%, rgba(14, 165, 233, 0.1) 0px, transparent 60%),
+      radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.15) 0px, transparent 50%),
+      radial-gradient(at 0% 100%, rgba(16, 185, 129, 0.12) 0px, transparent 50%);
+    background-attachment: fixed;
+    color: #f8fafc;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    perspective: 1200px;
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: #ffffff;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+}
+
+/* Spatial Vision Pro & 3D Glass Surface Hierarchy */
+.spatial-glass {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 
+    0 20px 50px -12px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.2) inset;
+  border-radius: 1.25rem;
+}
+
+.spatial-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%), rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+  box-shadow: 
+    0 10px 30px -5px rgba(0, 0, 0, 0.5),
+    0 1px 1px 0 rgba(255, 255, 255, 0.15) inset;
+  transform-style: preserve-3d;
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.spatial-card:hover {
+  transform: translateY(-4px) translateZ(12px) scale(1.01);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    0 24px 48px -12px rgba(0, 0, 0, 0.7),
+    0 0 25px rgba(99, 102, 241, 0.25),
+    0 1px 1px 0 rgba(255, 255, 255, 0.35) inset;
+}
+
+.spatial-btn {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%), rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  border-radius: 0.75rem;
+  box-shadow: 
+    0 4px 15px rgba(0, 0, 0, 0.3),
+    0 1px 0 0 rgba(255, 255, 255, 0.25) inset;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  cursor: pointer;
+  transform-style: preserve-3d;
+}
+
+.spatial-btn:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.08) 100%), rgba(30, 41, 59, 0.9);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-2px) translateZ(8px);
+  box-shadow: 
+    0 8px 25px rgba(0, 0, 0, 0.4),
+    0 0 15px rgba(99, 102, 241, 0.25),
+    0 1px 0 0 rgba(255, 255, 255, 0.4) inset;
+}
+
+.spatial-btn-primary {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  border-radius: 0.75rem;
+  box-shadow: 
+    0 8px 25px rgba(79, 70, 229, 0.45),
+    0 0 20px rgba(124, 58, 237, 0.35),
+    0 1px 0 0 rgba(255, 255, 255, 0.45) inset;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  cursor: pointer;
+  transform-style: preserve-3d;
+}
+
+.spatial-btn-primary:hover {
+  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 50%, #7e22ce 100%);
+  transform: translateY(-2px) translateZ(12px) scale(1.02);
+  box-shadow: 
+    0 12px 30px rgba(79, 70, 229, 0.6),
+    0 0 30px rgba(168, 85, 247, 0.5),
+    0 1px 0 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+.spatial-input {
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  border-radius: 0.75rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) inset;
+  transition: all 0.2s ease;
+}
+
+.spatial-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3), 0 2px 8px rgba(0, 0, 0, 0.3) inset;
+  outline: none;
+}
+
+/* Comprehensive Cleanup of Legacy Brutalist & High-Contrast Classes */
+.brutal-shadow, .brutal-shadow-sm, .brutal-shadow-lg, .min-card, .min-card-interactive {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%), rgba(15, 23, 42, 0.75) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.5), 0 1px 0 0 rgba(255, 255, 255, 0.15) inset !important;
+  color: #f8fafc !important;
+}
+
+/* Eradicate harsh black borders and hardcoded black backgrounds */
+.border-\[3px\], .border-2, .border-black, .border-slate-200, .border-neutral-800 {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  border-width: 1px !important;
+}
+
+.bg-white, .bg-slate-900\/50, .bg-slate-50, .bg-\[\#f4f4f0\], .bg-\[\#f7f5f0\] {
+  background-color: rgba(15, 23, 42, 0.75) !important;
+  backdrop-filter: blur(20px) !important;
+  color: #f8fafc !important;
+}
+
+.bg-black {
+  background-color: rgba(10, 15, 30, 0.85) !important;
+  color: #ffffff !important;
+}
+
+.text-black, .text-neutral-900, .text-neutral-800, .text-slate-900, .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+.text-neutral-700, .text-neutral-600, .text-slate-600, .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+.text-\[\#ffea00\], .bg-\[\#ffea00\] {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #6366f1, #a855f7) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Tables & Data Grid in 3D Glass */
+table {
+  color: #f8fafc !important;
+}
+
+th {
+  background: rgba(30, 41, 59, 0.7) !important;
+  color: #94a3b8 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #f1f5f9 !important;
+}
+
+tr:hover td {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* 3D Floating Orbs in Background */
+.spatial-orb {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(65px);
+  z-index: 1;
+  animation: floatOrb 14s ease-in-out infinite alternate;
+}
+
+@keyframes floatOrb {
+  0% { transform: translateY(0px) scale(1); }
+  50% { transform: translateY(-35px) scale(1.12) rotate(20deg); }
+  100% { transform: translateY(25px) scale(0.92) rotate(-20deg); }
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+@media print {
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  body { background: white !important; color: black !important; }
+}

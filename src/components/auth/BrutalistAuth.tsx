@@ -19,9 +19,10 @@ import {
   Hash,
   BookOpen,
   Sparkles,
-  Award,
   IdCard,
-  QrCode
+  QrCode,
+  Loader2,
+  KeyRound
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -29,15 +30,13 @@ export const BrutalistAuth: React.FC = () => {
   const {
     students,
     faculty,
-    loginAsStudent,
-    loginAsFaculty,
-    loginAsRole,
-    addStudent,
-    addFaculty
+    loginWithCredentials,
+    signupWithCredentials
   } = useCollege();
 
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [selectedRole, setSelectedRole] = useState<Role>('student');
+  const [isLoading, setIsLoading] = useState(false);
 
   // Sign In State
   const [signInIdentifier, setSignInIdentifier] = useState('');
@@ -67,6 +66,7 @@ export const BrutalistAuth: React.FC = () => {
       color: string;
       badgeBg: string;
       badgeText: string;
+      defaultUser: { name: string; id: string; email: string };
     }
   > = {
     student: {
@@ -75,7 +75,8 @@ export const BrutalistAuth: React.FC = () => {
       icon: <GraduationCap className="w-5 h-5 text-black" />,
       color: '#ffea00',
       badgeBg: 'bg-[#ffea00]',
-      badgeText: 'STUDENT IDENTITY'
+      badgeText: 'STUDENT IDENTITY',
+      defaultUser: { name: 'Alex Chen', id: '22CS042', email: 'alex.chen@collegeos.edu' }
     },
     faculty: {
       title: 'Faculty Portal Access',
@@ -83,7 +84,8 @@ export const BrutalistAuth: React.FC = () => {
       icon: <Briefcase className="w-5 h-5 text-black" />,
       color: '#a3e635',
       badgeBg: 'bg-[#a3e635]',
-      badgeText: 'FACULTY CLEARANCE'
+      badgeText: 'FACULTY CLEARANCE',
+      defaultUser: { name: 'Dr. Alan Turing', id: 'EMP101', email: 'alan.turing@collegeos.edu' }
     },
     hod: {
       title: 'HOD Executive Hub',
@@ -91,7 +93,8 @@ export const BrutalistAuth: React.FC = () => {
       icon: <ShieldAlert className="w-5 h-5 text-black" />,
       color: '#00f0ff',
       badgeBg: 'bg-[#00f0ff]',
-      badgeText: 'HOD DESK ACCESS'
+      badgeText: 'HOD DESK ACCESS',
+      defaultUser: { name: 'Dr. Linus Torvalds', id: 'EMP103', email: 'linus.torvalds@collegeos.edu' }
     },
     admin: {
       title: 'Dean & Administration',
@@ -99,150 +102,135 @@ export const BrutalistAuth: React.FC = () => {
       icon: <Building className="w-5 h-5 text-white" />,
       color: '#ff2a85',
       badgeBg: 'bg-[#ff2a85]',
-      badgeText: 'ADMINISTRATOR ROOT'
+      badgeText: 'ADMINISTRATOR ROOT',
+      defaultUser: { name: 'Dean Grace Hopper', id: 'ADM001', email: 'admin@collegeos.edu' }
     }
   };
 
   const currentRoleInfo = roleMeta[selectedRole];
 
-  // Handle Sign In Submission
-  const handleSignIn = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Quick fill helper to populate credentials
+  const fillCredentials = (identifier: string, role: Role, autoSubmit = false) => {
+    setSelectedRole(role);
+    setSignInIdentifier(identifier);
+    setSignInPassword('CollegeOS@2026');
     setSignInError('');
 
-    const query = signInIdentifier.trim().toLowerCase();
-
-    if (selectedRole === 'student') {
-      const match = students.find(
-        (s) =>
-          s.rollNo.toLowerCase() === query ||
-          s.email.toLowerCase() === query ||
-          s.name.toLowerCase().includes(query)
-      );
-
-      if (match) {
-        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
-        loginAsStudent(match);
-        return;
-      }
-
-      // If no query typed, pick the first student
-      if (!query) {
-        confetti({ particleCount: 40, spread: 50, origin: { y: 0.6 } });
-        loginAsStudent(students[0]);
-        return;
-      }
-
-      setSignInError('No student found matching this Roll Number or Email. Try demo profiles below!');
-    } else if (selectedRole === 'faculty' || selectedRole === 'hod') {
-      const match = faculty.find(
-        (f) =>
-          f.employeeId.toLowerCase() === query ||
-          f.email.toLowerCase() === query ||
-          f.name.toLowerCase().includes(query)
-      );
-
-      if (match) {
-        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
-        loginAsFaculty(match, selectedRole);
-        return;
-      }
-
-      if (!query) {
-        confetti({ particleCount: 40, spread: 50, origin: { y: 0.6 } });
-        loginAsFaculty(faculty[0], selectedRole);
-        return;
-      }
-
-      setSignInError('No faculty found matching this Employee ID or Email.');
-    } else {
-      // Admin
-      confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
-      loginAsRole('admin');
+    if (autoSubmit) {
+      setTimeout(async () => {
+        setIsLoading(true);
+        try {
+          const res = await loginWithCredentials({
+            identifier,
+            password: 'CollegeOS@2026',
+            role
+          });
+          if (!res.success) {
+            setSignInError(res.error || 'Authentication failed.');
+          } else {
+            confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+          }
+        } catch (err: any) {
+          setSignInError(err?.message || 'Login failed.');
+        } finally {
+          setIsLoading(false);
+        }
+      }, 50);
     }
   };
 
-  // Handle Sign Up Submission
-  const handleSignUp = (e: React.FormEvent) => {
+  // Handle Sign In Submission with strict authorization
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSignInError('');
+
+    if (!signInIdentifier.trim()) {
+      setSignInError(
+        selectedRole === 'student'
+          ? 'Please enter your Roll Number (e.g. 22CS042) or Email.'
+          : 'Please enter your Employee ID (e.g. EMP101), Admin ID, or Email.'
+      );
+      return;
+    }
+
+    if (!signInPassword.trim()) {
+      setSignInError('Password is required to access authorized portals.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await loginWithCredentials({
+        identifier: signInIdentifier.trim(),
+        password: signInPassword.trim(),
+        role: selectedRole
+      });
+
+      if (!res.success) {
+        setSignInError(res.error || 'Access Denied: Invalid credentials.');
+      } else {
+        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+      }
+    } catch (err: any) {
+      setSignInError(err?.message || 'An error occurred during authentication.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle Sign Up Submission with Firebase Auth creation
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setSignUpError('');
 
     if (!signUpName.trim()) {
-      setSignUpError('Please enter your full name.');
+      setSignUpError('Please enter your full legal name.');
       return;
     }
-    if (!signUpEmail.trim()) {
-      setSignUpError('Please enter an institutional email.');
+    if (!signUpEmail.trim() || !signUpEmail.includes('@')) {
+      setSignUpError('Please enter a valid institutional email.');
       return;
     }
     if (!signUpId.trim()) {
       setSignUpError(selectedRole === 'student' ? 'Please enter a Roll Number.' : 'Please enter an Employee ID.');
       return;
     }
-    if (signUpPassword && signUpPassword !== signUpConfirmPassword) {
+    if (!signUpPassword) {
+      setSignUpError('Please enter a password.');
+      return;
+    }
+    if (signUpPassword.length < 6) {
+      setSignUpError('Password must be at least 6 characters.');
+      return;
+    }
+    if (signUpPassword !== signUpConfirmPassword) {
       setSignUpError('Passwords do not match.');
       return;
     }
 
-    confetti({ particleCount: 80, spread: 70, origin: { y: 0.5 } });
-
-    if (selectedRole === 'student') {
-      const newStudent: Omit<StudentProfile, 'id'> = {
-        rollNo: signUpId.trim().toUpperCase(),
-        prn: `PRN2026${Math.floor(100000 + Math.random() * 900000)}`,
+    setIsLoading(true);
+    try {
+      const res = await signupWithCredentials({
         name: signUpName.trim(),
-        email: signUpEmail.trim().toLowerCase(),
-        avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(signUpName)}`,
+        email: signUpEmail.trim(),
+        password: signUpPassword,
+        role: selectedRole,
+        identifier: signUpId.trim(),
         branch: signUpBranch,
         semester: Number(signUpSemester),
         section: signUpSection,
-        batch: '2023-2027',
-        guardianContact: '+1 (555) 019-2831',
-        bloodGroup: 'O+',
-        cgpa: 8.5,
-        creditsCompleted: 92,
-        totalCredits: 160,
-        feeDue: 0,
-        feeStatus: 'paid',
-        attendanceRate: 90.0,
-        address: 'University Campus Quad, Building B'
-      };
+        designation: signUpDesignation
+      });
 
-      const fullStudent: StudentProfile = {
-        ...newStudent,
-        id: `std-${Date.now()}`
-      };
-
-      addStudent(newStudent);
-      loginAsStudent(fullStudent);
-    } else {
-      // Faculty, HOD, or Admin
-      const newFaculty: Omit<FacultyProfile, 'id'> = {
-        employeeId: signUpId.trim().toUpperCase(),
-        name: signUpName.trim(),
-        email: signUpEmail.trim().toLowerCase(),
-        avatar: `https://api.dicebear.com/7.x/notionists/svg?seed=${encodeURIComponent(signUpName)}`,
-        designation: selectedRole === 'hod' ? 'HOD' : signUpDesignation,
-        department: signUpBranch,
-        qualification: 'Ph.D. / M.Tech in Computer Science',
-        subjectsAssigned: ['CS-501 Design & Analysis of Algorithms', 'CS-502 Database Management Systems'],
-        officeHours: 'Mon-Thu 14:00 - 16:00',
-        cabinNo: 'Faculty Block B-302',
-        experienceYears: 6,
-        workloadHoursPerWeek: 16
-      };
-
-      const fullFaculty: FacultyProfile = {
-        ...newFaculty,
-        id: `fac-${Date.now()}`
-      };
-
-      addFaculty(newFaculty);
-      if (selectedRole === 'admin') {
-        loginAsRole('admin');
+      if (!res.success) {
+        setSignUpError(res.error || 'Registration failed.');
       } else {
-        loginAsFaculty(fullFaculty, selectedRole);
+        confetti({ particleCount: 80, spread: 70, origin: { y: 0.5 } });
       }
+    } catch (err: any) {
+      setSignUpError(err?.message || 'Failed to create account.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -269,7 +257,7 @@ export const BrutalistAuth: React.FC = () => {
               </div>
             </div>
             <p className="text-xs text-neutral-700 leading-relaxed font-medium">
-              Unified brutalist multi-role academic operating system. Instant synchronization across attendance, grading rosters, timetable scheduling, and curriculum management.
+              Unified multi-role academic operating system with Firebase Authentication security. Portals are protected — sign in with your authorized campus credentials or register a new account.
             </p>
           </div>
 
@@ -341,31 +329,31 @@ export const BrutalistAuth: React.FC = () => {
               </div>
               <div className="flex items-center space-x-1 text-[10px] font-mono font-bold text-black">
                 <QrCode className="w-3.5 h-3.5" />
-                <span>NFC VERIFIED</span>
+                <span>NFC & AUTH VERIFIED</span>
               </div>
             </div>
           </div>
 
-          {/* Quick Features List */}
-          <div className="brutal-card p-4 bg-[#fefce8] text-xs font-semibold space-y-2">
+          {/* Quick Credentials Info Card */}
+          <div className="brutal-card p-4 bg-[#fefce8] text-xs font-semibold space-y-2.5">
             <div className="font-black uppercase tracking-wider text-black flex items-center gap-1.5 text-xs">
-              <Sparkles className="w-4 h-4 text-black" />
-              <span>Full Autonomous Capabilities</span>
+              <KeyRound className="w-4 h-4 text-black" />
+              <span>Default Institutional Access Keys</span>
             </div>
-            <ul className="space-y-1.5 text-neutral-800 font-medium">
-              <li className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-black shrink-0" />
-                <span>Automated 75% attendance threshold monitoring</span>
-              </li>
-              <li className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-black shrink-0" />
-                <span>Integrated Gemini 3.7 AI academic tutor & syllabus solver</span>
-              </li>
-              <li className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-black shrink-0" />
-                <span>Conflict-free timetable generator & exam gradebooks</span>
-              </li>
-            </ul>
+            <div className="text-[11px] text-neutral-800 space-y-1">
+              <p>
+                • <strong>Student:</strong> <span className="font-mono bg-white px-1 border border-black rounded">22CS042</span> / <span className="font-mono bg-white px-1 border border-black rounded">CollegeOS@2026</span>
+              </p>
+              <p>
+                • <strong>Faculty:</strong> <span className="font-mono bg-white px-1 border border-black rounded">EMP101</span> / <span className="font-mono bg-white px-1 border border-black rounded">CollegeOS@2026</span>
+              </p>
+              <p>
+                • <strong>HOD:</strong> <span className="font-mono bg-white px-1 border border-black rounded">EMP103</span> / <span className="font-mono bg-white px-1 border border-black rounded">CollegeOS@2026</span>
+              </p>
+              <p>
+                • <strong>Admin:</strong> <span className="font-mono bg-white px-1 border border-black rounded">admin@collegeos.edu</span> / <span className="font-mono bg-white px-1 border border-black rounded">CollegeOS@2026</span>
+              </p>
+            </div>
           </div>
         </div>
 
@@ -414,10 +402,10 @@ export const BrutalistAuth: React.FC = () => {
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2.5">
                 <span className="text-xs font-black uppercase tracking-wider text-black">
-                  Select Your Role
+                  Select Your Portal Role
                 </span>
                 <span className="text-[11px] font-bold font-mono text-neutral-600">
-                  4 PORTALS AVAILABLE
+                  4 SECURE TIERS
                 </span>
               </div>
 
@@ -468,10 +456,10 @@ export const BrutalistAuth: React.FC = () => {
             {/* ========================================================================= */}
             {authMode === 'signin' && (
               <div>
-                {/* 1-Click Instant Demo Pickers */}
+                {/* 1-Click Fast Fill Credentials */}
                 <div className="mb-5 p-3.5 bg-neutral-50 border-2 border-black rounded-lg">
                   <div className="text-xs font-black uppercase tracking-wider text-black mb-2 flex items-center justify-between">
-                    <span>Quick 1-Click Demo Profiles:</span>
+                    <span>Authorized Campus Profiles:</span>
                     <span className="text-[10px] font-mono bg-black text-white px-1.5 py-0.5 rounded">FAST LOGIN</span>
                   </div>
 
@@ -481,11 +469,8 @@ export const BrutalistAuth: React.FC = () => {
                         <button
                           key={std.id}
                           type="button"
-                          onClick={() => {
-                            confetti({ particleCount: 50, spread: 50, origin: { y: 0.6 } });
-                            loginAsStudent(std);
-                          }}
-                          className="brutal-btn px-3 py-1.5 text-xs text-black flex items-center space-x-2 bg-white"
+                          onClick={() => fillCredentials(std.rollNo, 'student', true)}
+                          className="brutal-btn px-3 py-1.5 text-xs text-black flex items-center space-x-2 bg-white hover:bg-[#ffea00]"
                         >
                           <img src={std.avatar} alt={std.name} className="w-4 h-4 rounded-full border border-black" />
                           <span>{std.name}</span>
@@ -498,11 +483,8 @@ export const BrutalistAuth: React.FC = () => {
                         <button
                           key={fac.id}
                           type="button"
-                          onClick={() => {
-                            confetti({ particleCount: 50, spread: 50, origin: { y: 0.6 } });
-                            loginAsFaculty(fac, selectedRole);
-                          }}
-                          className="brutal-btn px-3 py-1.5 text-xs text-black flex items-center space-x-2 bg-white"
+                          onClick={() => fillCredentials(fac.employeeId, selectedRole, true)}
+                          className="brutal-btn px-3 py-1.5 text-xs text-black flex items-center space-x-2 bg-white hover:bg-[#a3e635]"
                         >
                           <img src={fac.avatar} alt={fac.name} className="w-4 h-4 rounded-full border border-black" />
                           <span>{fac.name}</span>
@@ -513,14 +495,11 @@ export const BrutalistAuth: React.FC = () => {
                     {selectedRole === 'admin' && (
                       <button
                         type="button"
-                        onClick={() => {
-                          confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
-                          loginAsRole('admin');
-                        }}
+                        onClick={() => fillCredentials('admin@collegeos.edu', 'admin', true)}
                         className="brutal-btn px-4 py-2 text-xs text-black flex items-center space-x-2 bg-[#ffea00]"
                       >
                         <Building className="w-4 h-4 text-black" />
-                        <span className="font-extrabold">Dean Grace Hopper (Admin Gateway)</span>
+                        <span className="font-extrabold">Dean Grace Hopper (admin@collegeos.edu)</span>
                       </button>
                     )}
                   </div>
@@ -540,7 +519,7 @@ export const BrutalistAuth: React.FC = () => {
                       {selectedRole === 'student'
                         ? 'Roll Number / Institutional Email'
                         : selectedRole === 'admin'
-                        ? 'Administrator Access ID'
+                        ? 'Administrator Access ID / Email'
                         : 'Employee ID / Faculty Email'}
                     </label>
                     <div className="relative">
@@ -566,7 +545,7 @@ export const BrutalistAuth: React.FC = () => {
                       <label className="block text-xs font-extrabold uppercase text-black">
                         Password / Access Key
                       </label>
-                      <span className="text-[11px] text-neutral-500 font-medium">Demo password: any key</span>
+                      <span className="text-[11px] text-neutral-500 font-medium">Default: CollegeOS@2026</span>
                     </div>
                     <div className="relative">
                       <Lock className="w-4 h-4 text-neutral-500 absolute left-3.5 top-3" />
@@ -590,10 +569,20 @@ export const BrutalistAuth: React.FC = () => {
 
                   <button
                     type="submit"
-                    className="w-full brutal-btn-primary py-3 px-4 font-black text-sm uppercase tracking-wider flex items-center justify-center space-x-2 mt-2"
+                    disabled={isLoading}
+                    className="w-full brutal-btn-primary py-3 px-4 font-black text-sm uppercase tracking-wider flex items-center justify-center space-x-2 mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <span>Authorize & Enter Portal</span>
-                    <ArrowRight className="w-4 h-4" />
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Verifying Authorization...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Authorize & Enter Portal</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
                   </button>
                 </form>
               </div>
@@ -739,7 +728,7 @@ export const BrutalistAuth: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-extrabold uppercase text-black mb-1.5">
-                      Password
+                      Password (min. 6 chars)
                     </label>
                     <div className="relative">
                       <Lock className="w-4 h-4 text-neutral-500 absolute left-3.5 top-3" />
@@ -780,10 +769,20 @@ export const BrutalistAuth: React.FC = () => {
 
                 <button
                   type="submit"
-                  className="w-full brutal-btn-cyan py-3 px-4 font-black text-sm uppercase tracking-wider flex items-center justify-center space-x-2 mt-2"
+                  disabled={isLoading}
+                  className="w-full brutal-btn-cyan py-3 px-4 font-black text-sm uppercase tracking-wider flex items-center justify-center space-x-2 mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <UserPlus className="w-4 h-4" />
-                  <span>Create Account & Log In</span>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Creating Account & Securing Node...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4" />
+                      <span>Create Account & Log In</span>
+                    </>
+                  )}
                 </button>
               </form>
             )}
@@ -792,7 +791,7 @@ export const BrutalistAuth: React.FC = () => {
             <div className="mt-6 pt-4 border-t-2 border-black flex items-center justify-between text-xs text-neutral-600 font-bold">
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>NAAC / NBA Accredited System</span>
+                <span>Firebase Authentication Protected</span>
               </span>
               <span className="font-mono text-[11px] bg-black text-white px-2 py-0.5 rounded">
                 COLLEGE OS v2.0
@@ -805,3 +804,4 @@ export const BrutalistAuth: React.FC = () => {
     </div>
   );
 };
+

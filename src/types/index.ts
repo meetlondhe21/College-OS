@@ -1,5 +1,17 @@
 export type Role = 'student' | 'faculty' | 'hod' | 'admin';
 
+export interface UserAccount {
+  uid: string;
+  email: string;
+  role: Role;
+  name: string;
+  profileId: string;
+  identifier: string; // Roll number, Employee ID, or Admin username
+  department?: string;
+  createdAt?: string;
+  avatar?: string;
+}
+
 export interface StudentProfile {
   id: string;
   rollNo: string;

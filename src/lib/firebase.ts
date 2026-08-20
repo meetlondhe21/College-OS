@@ -14,9 +14,18 @@ import {
   where,
   orderBy,
   serverTimestamp,
-  Timestamp 
+  Timestamp,
+  getDocFromServer
 } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { 
+  getAuth, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged,
+  updateProfile,
+  User as FirebaseUser
+} from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Initialize Firebase App
@@ -44,7 +53,15 @@ export {
   where,
   orderBy,
   serverTimestamp,
-  Timestamp
+  Timestamp,
+  getDocFromServer,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  updateProfile
 };
+export type { FirebaseUser };
 
 export default app;
+

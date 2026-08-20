@@ -1,0 +1,93 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered and authorized user account in College OS",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Institutional email address"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["student", "faculty", "hod", "admin"],
+          "description": "Assigned portal role"
+        },
+        "name": {
+          "type": "string",
+          "description": "User's full name"
+        },
+        "identifier": {
+          "type": "string",
+          "description": "Roll number, Employee ID, or Admin ID"
+        },
+        "profileId": {
+          "type": "string",
+          "description": "Linked profile ID"
+        },
+        "department": {
+          "type": "string",
+          "description": "Academic department or branch"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Account registration timestamp"
+        }
+      },
+      "required": ["uid", "email", "role", "name"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student profile record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "rollNo": { "type": "string" },
+        "prn": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "branch": { "type": "string" },
+        "semester": { "type": "number" },
+        "section": { "type": "string" },
+        "batch": { "type": "string" },
+        "cgpa": { "type": "number" },
+        "attendanceRate": { "type": "number" }
+      },
+      "required": ["id", "rollNo", "name", "email", "branch", "semester"]
+    },
+    "Faculty": {
+      "title": "Faculty",
+      "description": "Faculty and department head profile record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "designation": { "type": "string" },
+        "department": { "type": "string" }
+      },
+      "required": ["id", "employeeId", "name", "email", "designation", "department"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Authorized user accounts and portal access mappings"
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Institutional student directory"
+    },
+    "/faculty/{facultyId}": {
+      "schema": "Faculty",
+      "description": "Institutional faculty and HOD directory"
+    }
+  }
+}

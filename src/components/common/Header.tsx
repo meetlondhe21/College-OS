@@ -10,12 +10,11 @@ import {
   Bell,
   RotateCcw,
   ChevronDown,
-  Sparkles,
-  Layers,
-  Cpu,
-  Compass,
-  Boxes,
-  LogOut
+  LogOut,
+  BookOpen,
+  Clock,
+  CheckCircle2,
+  Users
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -39,7 +38,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNotifications }) => {
   } = useCollege();
 
   const [timeStr, setTimeStr] = useState('');
-  const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   useEffect(() => {
     const updateTime = () => {
@@ -60,93 +59,137 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNotifications }) => {
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const roleMeta: Record<Role, { code: string; label: string; icon: React.ReactNode; color: string }> = {
+  const roleMeta: Record<
+    Role,
+    { label: string; icon: React.ReactNode; activeBg: string; activeText: string }
+  > = {
     student: {
-      code: '01',
-      label: 'Student Portal',
+      label: 'Student',
       icon: <GraduationCap className="w-4 h-4" />,
-      color: 'from-blue-500 to-indigo-600'
+      activeBg: 'bg-[#ffea00]',
+      activeText: 'text-black font-extrabold'
     },
     faculty: {
-      code: '02',
-      label: 'Faculty Hub',
+      label: 'Faculty',
       icon: <Briefcase className="w-4 h-4" />,
-      color: 'from-emerald-500 to-teal-600'
+      activeBg: 'bg-[#a3e635]',
+      activeText: 'text-black font-extrabold'
     },
     hod: {
-      code: '03',
-      label: 'HOD Desk',
+      label: 'HOD',
       icon: <ShieldAlert className="w-4 h-4" />,
-      color: 'from-amber-500 to-orange-600'
+      activeBg: 'bg-[#00f0ff]',
+      activeText: 'text-black font-extrabold'
     },
     admin: {
-      code: '04',
-      label: 'Admin Control',
+      label: 'Admin',
       icon: <Building className="w-4 h-4" />,
-      color: 'from-purple-500 to-pink-600'
+      activeBg: 'bg-[#ff2a85]',
+      activeText: 'text-white font-extrabold'
     }
   };
 
+  const activeName =
+    currentRole === 'student'
+      ? currentStudent?.name || 'Alex Chen'
+      : currentRole === 'admin'
+      ? 'Dean Grace Hopper'
+      : currentFaculty?.name || 'Dr. Alan Turing';
+
+  const activeId =
+    currentRole === 'student'
+      ? currentStudent?.rollNo || '22CS042'
+      : currentRole === 'admin'
+      ? 'ADMIN-ROOT'
+      : currentFaculty?.employeeId || 'EMP101';
+
   return (
-    <header className="sticky top-3 z-40 max-w-7xl mx-auto px-4 sm:px-6 w-full">
-      <div className="spatial-glass border border-white/20 p-2 sm:p-3 shadow-2xl relative backdrop-blur-2xl">
-        {/* Top Mini Telemetry Header */}
-        <div className="flex items-center justify-between px-2 pb-2 mb-2 border-b border-white/10 text-xs">
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-1.5 text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/30 text-[11px] font-medium shadow-inner">
-              <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-ping" />
-              <span>SPATIAL OS ACTIVE</span>
-            </div>
-            <span className="text-white/20">|</span>
-            <span className="text-slate-300 hidden sm:flex items-center gap-1.5 text-[11px]">
-              <Boxes className="w-3.5 h-3.5 text-purple-400" />
-              <span>3D Holographic Campus Canvas</span>
+    <header className="sticky top-3 z-40 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+      <div className="brutal-card p-3 sm:p-4 bg-white border-2 border-black shadow-[4px_4px_0px_#000000]">
+        
+        {/* Top Mini Telemetry Header Bar */}
+        <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b-2 border-black text-xs">
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            <span className="brutal-badge bg-[#a3e635] text-black text-[10px] flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-black animate-pulse" />
+              <span>COLLEGE OS ONLINE</span>
+            </span>
+            <span className="brutal-badge bg-[#ffea00] text-black text-[10px] hidden sm:flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3 text-black" />
+              <span>FIRESTORE CLOUD DB</span>
+            </span>
+            <span className="text-black font-bold hidden sm:inline">|</span>
+            <span className="text-neutral-700 font-bold text-[11px] hidden sm:flex items-center gap-1.5">
+              <span>Autonomous Engineering Campus</span>
             </span>
           </div>
 
-          <div className="flex items-center space-x-3 text-[11px]">
-            <span className="bg-white/10 px-2.5 py-0.5 rounded-full border border-white/10 text-slate-200 font-mono">
-              {timeStr}
+          <div className="flex items-center space-x-2 sm:space-x-3 text-xs">
+            <span className="bg-neutral-100 border border-black px-2.5 py-0.5 rounded text-black font-mono font-bold flex items-center gap-1">
+              <Clock className="w-3 h-3 text-black" />
+              <span>{timeStr}</span>
             </span>
             <button
               onClick={resetToDemoData}
-              title="Reset Demo Data"
-              className="flex items-center space-x-1 text-slate-400 hover:text-white transition cursor-pointer px-2 py-0.5 rounded-lg hover:bg-white/10"
+              title="Reset to Initial Demo State"
+              className="brutal-btn px-2 py-0.5 text-[11px] font-bold text-black flex items-center space-x-1 hover:bg-neutral-200"
             >
               <RotateCcw className="w-3 h-3" />
-              <span>Reset</span>
+              <span className="hidden sm:inline">Reset Data</span>
             </button>
           </div>
         </div>
 
-        {/* Main Header Toolbar */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-3 px-2">
-          {/* Logo Branding with 3D Depth Icon */}
-          <div className="flex items-center space-x-3 w-full md:w-auto justify-between md:justify-start">
+        {/* Main Navigation Toolbar */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+          
+          {/* Branding Logo */}
+          <div className="flex items-center justify-between w-full md:w-auto">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 p-[1.5px] shadow-lg shadow-indigo-500/30 shrink-0 transform hover:rotate-6 transition duration-300">
-                <div className="w-full h-full bg-slate-950/80 rounded-[14px] flex items-center justify-center text-indigo-400 backdrop-blur-md">
-                  <Compass className="w-5 h-5 animate-pulse" />
-                </div>
+              <div className="w-10 h-10 bg-[#ffea00] border-2 border-black rounded-lg flex items-center justify-center shadow-[2px_2px_0px_#000000] shrink-0">
+                <BookOpen className="w-5 h-5 text-black" />
               </div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-white drop-shadow-sm">
-                    College Spatial OS
+                  <h1 className="text-lg sm:text-xl font-black uppercase tracking-tight text-black">
+                    College OS
                   </h1>
-                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gradient-to-r from-indigo-500/30 to-purple-500/30 text-indigo-300 border border-indigo-500/40">
-                    Vision 3D
+                  <span className="bg-black text-white text-[10px] font-mono font-bold px-1.5 py-0.5 rounded">
+                    PRO
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400 font-medium">
-                  Next-Gen Spatial Academic Campus Intelligence
+                <p className="text-[11px] text-neutral-600 font-bold">
+                  Academic Management & AI Intelligence
                 </p>
               </div>
             </div>
+
+            {/* Mobile Search & Notification Triggers */}
+            <div className="flex items-center space-x-1.5 md:hidden">
+              <button
+                onClick={() => setIsSearchOpen(true)}
+                className="brutal-btn p-2 text-black"
+                aria-label="Search"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+              <button
+                onClick={onOpenNotifications}
+                className="brutal-btn p-2 text-black relative"
+                aria-label="Notifications"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-[#ff2a85] text-white text-[10px] font-extrabold px-1.5 py-0.2 rounded-full border border-black">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Role Navigation Pills (Spatial Floating Bar) */}
-          <div className="flex items-center space-x-1.5 p-1 bg-black/40 rounded-xl border border-white/10 overflow-x-auto max-w-full">
+          {/* 4-Role Navigation Pills */}
+          <div className="flex items-center space-x-1.5 p-1 bg-neutral-100 border-2 border-black rounded-lg overflow-x-auto max-w-full">
             {(['student', 'faculty', 'hod', 'admin'] as Role[]).map((r) => {
               const meta = roleMeta[r];
               const isActive = currentRole === r;
@@ -154,10 +197,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNotifications }) => {
                 <button
                   key={r}
                   onClick={() => setCurrentRole(r)}
-                  className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all shrink-0 cursor-pointer ${
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all shrink-0 cursor-pointer border ${
                     isActive
-                      ? 'spatial-btn-primary text-white shadow-lg'
-                      : 'text-slate-400 hover:text-white hover:bg-white/10'
+                      ? `${meta.activeBg} ${meta.activeText} border-black shadow-[2px_2px_0px_#000000] translate-x-[-1px] translate-y-[-1px]`
+                      : 'border-transparent text-neutral-700 hover:text-black hover:bg-white'
                   }`}
                 >
                   {meta.icon}
@@ -167,66 +210,61 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNotifications }) => {
             })}
           </div>
 
-          {/* Action Utilities & Avatar Switcher */}
-          <div className="flex items-center space-x-2">
-            {/* Search Trigger */}
+          {/* Desktop Search, Notifications, Profile & Logout */}
+          <div className="hidden md:flex items-center space-x-2.5">
+            {/* Global Search Button */}
             <button
               onClick={() => setIsSearchOpen(true)}
-              className="spatial-btn flex items-center space-x-2 px-3 py-1.5 text-xs text-slate-200"
+              className="brutal-btn flex items-center space-x-2 px-3 py-1.5 text-xs text-black"
             >
-              <Search className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden sm:inline">Search</span>
-              <kbd className="bg-white/10 text-slate-300 px-1.5 py-0.2 rounded text-[10px] font-mono border border-white/10">⌘K</kbd>
+              <Search className="w-3.5 h-3.5" />
+              <span>Search</span>
+              <kbd className="bg-black text-white px-1.5 py-0.2 rounded text-[10px] font-mono">⌘K</kbd>
             </button>
 
-            {/* Notifications Trigger */}
+            {/* Notification Drawer Button */}
             <button
               onClick={onOpenNotifications}
-              className="spatial-btn relative p-2 text-slate-200 hover:text-white"
+              className="brutal-btn relative p-2 text-black hover:bg-neutral-100"
               aria-label="Notifications"
             >
               <Bell className="w-4 h-4" />
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-gradient-to-r from-pink-500 to-rose-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full shadow-lg shadow-pink-500/50 animate-pulse">
+                <span className="absolute -top-1.5 -right-1.5 bg-[#ff2a85] text-white text-[10px] font-extrabold px-1.5 py-0.2 rounded-full border border-black shadow">
                   {unreadCount}
                 </span>
               )}
             </button>
 
-            {/* Logout / Switch ID button */}
-            <button
-              onClick={logout}
-              title="Sign Out / Switch ID"
-              className="spatial-btn flex items-center space-x-1.5 px-2.5 py-1.5 text-xs text-rose-300 hover:text-white hover:bg-rose-500/20 border-rose-500/30"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Logout</span>
-            </button>
-
-            {/* Active Persona Dropdown */}
+            {/* Active User Switcher / Dropdown */}
             <div className="relative">
               <button
-                onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-                className="spatial-btn flex items-center space-x-2 px-3 py-1.5 text-xs text-white"
+                onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                className="brutal-btn flex items-center space-x-2 px-3 py-1.5 text-xs text-black bg-white"
               >
-                <div className="w-5 h-5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-[10px] font-bold text-white shadow">
-                  {currentRole === 'student' ? currentStudent.name[0] : 'F'}
+                <div className="w-5 h-5 rounded bg-[#ffea00] border border-black flex items-center justify-center text-[10px] font-black text-black">
+                  {activeName[0]}
                 </div>
-                <span className="max-w-[80px] truncate text-slate-200">
-                  {currentRole === 'student' ? currentStudent.name.split(' ')[0] : currentFaculty.name.split(' ')[1] || 'Admin'}
-                </span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                <div className="text-left">
+                  <span className="font-extrabold max-w-[90px] truncate block text-black">
+                    {activeName.split(' ')[0]}
+                  </span>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-black" />
               </button>
 
-              {showRoleDropdown && (
-                <div className="absolute right-0 mt-2 w-72 rounded-2xl spatial-glass p-3 text-xs shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 border border-white/20">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-white/10 pb-1.5 mb-2 flex items-center justify-between">
-                    <span>Spatial Profile Node</span>
-                    <span className="text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded font-mono">3D Sync</span>
+              {showProfileDropdown && (
+                <div className="absolute right-0 mt-2 w-72 brutal-card p-3 text-xs z-50 animate-in fade-in zoom-in-95 duration-100 bg-white border-2 border-black shadow-[5px_5px_0px_#000000]">
+                  <div className="border-b-2 border-black pb-2 mb-2">
+                    <div className="text-[10px] font-black uppercase text-neutral-500">
+                      CURRENT IDENTITY
+                    </div>
+                    <div className="font-black text-sm text-black">{activeName}</div>
+                    <div className="text-xs font-mono font-bold text-neutral-700">{activeId}</div>
                   </div>
 
-                  <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 px-1">
-                    Student Nodes:
+                  <div className="text-[10px] font-black uppercase text-neutral-500 mb-1.5">
+                    Switch Student Profile:
                   </div>
                   <div className="space-y-1 mb-3">
                     {students.slice(0, 3).map((std) => (
@@ -235,52 +273,75 @@ export const Header: React.FC<HeaderProps> = ({ onOpenNotifications }) => {
                         onClick={() => {
                           setCurrentStudent(std);
                           setCurrentRole('student');
-                          setShowRoleDropdown(false);
+                          setShowProfileDropdown(false);
                         }}
-                        className={`w-full text-left p-2 rounded-xl text-xs flex items-center justify-between cursor-pointer transition-colors ${
-                          currentStudent.id === std.id && currentRole === 'student'
-                            ? 'bg-indigo-600/40 border border-indigo-500/50 text-white font-semibold shadow-inner'
-                            : 'hover:bg-white/10 text-slate-300'
+                        className={`w-full text-left p-1.5 rounded border text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                          currentStudent?.id === std.id && currentRole === 'student'
+                            ? 'bg-[#ffea00] border-black text-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                            : 'border-transparent hover:bg-neutral-100 text-neutral-800'
                         }`}
                       >
                         <div className="flex items-center space-x-2">
-                          <img src={std.avatar} alt={std.name} className="w-6 h-6 rounded-full object-cover border border-white/30" />
-                          <span>{std.name}</span>
+                          <img src={std.avatar} alt={std.name} className="w-5 h-5 rounded-full border border-black" />
+                          <span className="truncate">{std.name}</span>
                         </div>
-                        <span className="text-[10px] font-mono text-slate-400">{std.rollNo}</span>
+                        <span className="font-mono text-[10px] font-bold">{std.rollNo}</span>
                       </button>
                     ))}
                   </div>
 
-                  <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 px-1">
-                    Faculty Nodes:
+                  <div className="text-[10px] font-black uppercase text-neutral-500 mb-1.5">
+                    Switch Faculty Profile:
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1 mb-3">
                     {faculty.slice(0, 2).map((fac) => (
                       <button
                         key={fac.id}
                         onClick={() => {
                           setCurrentFaculty(fac);
                           setCurrentRole('faculty');
-                          setShowRoleDropdown(false);
+                          setShowProfileDropdown(false);
                         }}
-                        className={`w-full text-left p-2 rounded-xl text-xs flex items-center justify-between cursor-pointer transition-colors ${
-                          currentFaculty.id === fac.id && currentRole === 'faculty'
-                            ? 'bg-emerald-600/40 border border-emerald-500/50 text-white font-semibold shadow-inner'
-                            : 'hover:bg-white/10 text-slate-300'
+                        className={`w-full text-left p-1.5 rounded border text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                          currentFaculty?.id === fac.id && currentRole === 'faculty'
+                            ? 'bg-[#a3e635] border-black text-black font-extrabold shadow-[1px_1px_0px_#000000]'
+                            : 'border-transparent hover:bg-neutral-100 text-neutral-800'
                         }`}
                       >
                         <div className="flex items-center space-x-2">
-                          <img src={fac.avatar} alt={fac.name} className="w-6 h-6 rounded-full object-cover border border-white/30" />
-                          <span>{fac.name}</span>
+                          <img src={fac.avatar} alt={fac.name} className="w-5 h-5 rounded-full border border-black" />
+                          <span className="truncate">{fac.name}</span>
                         </div>
-                        <span className="text-[10px] font-mono text-slate-400">{fac.employeeId}</span>
+                        <span className="font-mono text-[10px] font-bold">{fac.employeeId}</span>
                       </button>
                     ))}
+                  </div>
+
+                  <div className="pt-2 border-t border-neutral-200">
+                    <button
+                      onClick={() => {
+                        setShowProfileDropdown(false);
+                        logout();
+                      }}
+                      className="w-full brutal-btn px-3 py-1.5 text-xs text-red-700 bg-red-50 hover:bg-red-100 border-red-600 flex items-center justify-center space-x-1.5 font-extrabold"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Log Out Session</span>
+                    </button>
                   </div>
                 </div>
               )}
             </div>
+
+            {/* Quick Logout Button */}
+            <button
+              onClick={logout}
+              title="Sign Out"
+              className="brutal-btn p-2 text-red-600 hover:bg-red-50 border-red-600"
+              aria-label="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>

@@ -31,6 +31,17 @@ import {
   INITIAL_NOTIFICATIONS,
   DEPARTMENT_STATS
 } from '../data/mockData';
+import {
+  db,
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot
+} from '../lib/firebase';
+import { initializeFirestoreDatabase } from '../lib/firestoreService';
 
 interface CollegeContextType {
   currentRole: Role;
@@ -80,6 +91,9 @@ interface CollegeContextType {
   clearAllNotifications: () => void;
   resetToDemoData: () => void;
   
+  // Database status
+  isFirestoreConnected: boolean;
+
   // Global search & command palette
   isSearchOpen: boolean;
   setIsSearchOpen: (open: boolean) => void;
@@ -120,6 +134,7 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [feeLedgers, setFeeLedgers] = useState<Record<string, FeeLedger>>(() => loadStored('fees', INITIAL_FEE_LEDGERS));
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => loadStored('notifications', INITIAL_NOTIFICATIONS));
   const [departmentStats] = useState<DepartmentStats[]>(DEPARTMENT_STATS);
+  const [isFirestoreConnected, setIsFirestoreConnected] = useState<boolean>(true);
 
   const [currentStudent, setCurrentStudent] = useState<StudentProfile>(() => {
     const saved = loadStored<StudentProfile | null>('currentStudent', null);
@@ -133,6 +148,73 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => loadStored('isAuthenticated', true));
+
+  // Initialize Firestore listeners & seeds on mount
+  useEffect(() => {
+    initializeFirestoreDatabase().catch(console.warn);
+
+    // Live Snapshot for Students
+    const unsubStudents = onSnapshot(
+      collection(db, 'students'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: StudentProfile[] = [];
+          snapshot.forEach((doc) => list.push(doc.data() as StudentProfile));
+          setStudents(list);
+          setIsFirestoreConnected(true);
+        }
+      },
+      (err) => {
+        console.warn('Firestore student sync fallback to local cache:', err);
+      }
+    );
+
+    // Live Snapshot for Faculty
+    const unsubFaculty = onSnapshot(
+      collection(db, 'faculty'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: FacultyProfile[] = [];
+          snapshot.forEach((doc) => list.push(doc.data() as FacultyProfile));
+          setFaculty(list);
+        }
+      },
+      (err) => console.warn('Firestore faculty sync fallback:', err)
+    );
+
+    // Live Snapshot for Notices
+    const unsubNotices = onSnapshot(
+      collection(db, 'notices'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Notice[] = [];
+          snapshot.forEach((doc) => list.push(doc.data() as Notice));
+          setNotices(list);
+        }
+      },
+      (err) => console.warn('Firestore notices sync fallback:', err)
+    );
+
+    // Live Snapshot for Assignments
+    const unsubAssignments = onSnapshot(
+      collection(db, 'assignments'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Assignment[] = [];
+          snapshot.forEach((doc) => list.push(doc.data() as Assignment));
+          setAssignments(list);
+        }
+      },
+      (err) => console.warn('Firestore assignments sync fallback:', err)
+    );
+
+    return () => {
+      unsubStudents();
+      unsubFaculty();
+      unsubNotices();
+      unsubAssignments();
+    };
+  }, []);
 
   const loginAsStudent = (student: StudentProfile) => {
     setCurrentStudent(student);
@@ -211,13 +293,18 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
         const allStudentRecords = [...newRecords, ...attendance].filter((a) => a.studentId === std.id);
         const presentCount = allStudentRecords.filter((a) => a.status === 'present' || a.status === 'leave').length;
         const rate = allStudentRecords.length > 0 ? Number(((presentCount / allStudentRecords.length) * 100).toFixed(1)) : std.attendanceRate;
-        return { ...std, attendanceRate: rate };
+        
+        const updated = { ...std, attendanceRate: rate };
+        // Sync student attendance rate to Firestore
+        setDoc(doc(db, 'students', std.id), updated, { merge: true }).catch(console.warn);
+        return updated;
       })
     );
   };
 
   const updateMarks = (record: MarksRecord) => {
     setMarks((prev) => prev.map((m) => (m.id === record.id ? record : m)));
+    setDoc(doc(db, 'marks', record.id), record, { merge: true }).catch(console.warn);
   };
 
   const addMarksBatch = (records: MarksRecord[]) => {
@@ -232,6 +319,7 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
         } else {
           updated.push(newRec);
         }
+        setDoc(doc(db, 'marks', newRec.id), newRec, { merge: true }).catch(console.warn);
       });
       return updated;
     });
@@ -244,6 +332,8 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
       submissions: []
     };
     setAssignments((prev) => [newAsg, ...prev]);
+    setDoc(doc(db, 'assignments', newAsg.id), newAsg).catch(console.warn);
+
     setNotifications((prev) => [
       {
         id: `notif-${Date.now()}`,
@@ -269,7 +359,9 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
       prev.map((asg) => {
         if (asg.id !== assignmentId) return asg;
         const filtered = asg.submissions.filter((s) => s.studentId !== submission.studentId);
-        return { ...asg, submissions: [...filtered, newSub] };
+        const updated = { ...asg, submissions: [...filtered, newSub] };
+        setDoc(doc(db, 'assignments', assignmentId), updated, { merge: true }).catch(console.warn);
+        return updated;
       })
     );
 
@@ -291,12 +383,14 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
     setAssignments((prev) =>
       prev.map((asg) => {
         if (asg.id !== assignmentId) return asg;
-        return {
+        const updated = {
           ...asg,
           submissions: asg.submissions.map((sub) =>
             sub.id === submissionId ? { ...sub, score, feedback, status: 'evaluated' } : sub
           )
         };
+        setDoc(doc(db, 'assignments', assignmentId), updated, { merge: true }).catch(console.warn);
+        return updated;
       })
     );
   };
@@ -308,6 +402,8 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
       date: new Date().toISOString().split('T')[0]
     };
     setNotices((prev) => [newNotice, ...prev]);
+    setDoc(doc(db, 'notices', newNotice.id), newNotice).catch(console.warn);
+
     setNotifications((prev) => [
       {
         id: `notif-${Date.now()}`,
@@ -323,6 +419,7 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const deleteNotice = (id: string) => {
     setNotices((prev) => prev.filter((n) => n.id !== id));
+    deleteDoc(doc(db, 'notices', id)).catch(console.warn);
   };
 
   const applyLeave = (leave: Omit<LeaveApplication, 'id' | 'status' | 'appliedAt'>) => {
@@ -333,20 +430,22 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
       appliedAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
     };
     setLeaves((prev) => [newLeave, ...prev]);
+    setDoc(doc(db, 'leaves', newLeave.id), newLeave).catch(console.warn);
   };
 
   const updateLeaveStatus = (leaveId: string, status: 'approved' | 'rejected', comment?: string) => {
     setLeaves((prev) =>
-      prev.map((l) =>
-        l.id === leaveId
-          ? {
-              ...l,
-              status,
-              approverComment: comment || (status === 'approved' ? 'Leave sanctioned.' : 'Leave rejected.'),
-              reviewedBy: currentFaculty.name || 'Faculty Mentor'
-            }
-          : l
-      )
+      prev.map((l) => {
+        if (l.id !== leaveId) return l;
+        const updated = {
+          ...l,
+          status,
+          approverComment: comment || (status === 'approved' ? 'Leave sanctioned.' : 'Leave rejected.'),
+          reviewedBy: currentFaculty.name || 'Faculty Mentor'
+        };
+        setDoc(doc(db, 'leaves', leaveId), updated, { merge: true }).catch(console.warn);
+        return updated;
+      })
     );
   };
 
@@ -391,16 +490,20 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
         type: 'Tuition Fee' as const
       };
 
+      const updatedLedger = {
+        ...current,
+        paidAmount: newPaid,
+        balanceDue: newBal,
+        status: newStatus,
+        breakdown: updatedBreakdown,
+        transactions: [newTx, ...current.transactions]
+      };
+
+      setDoc(doc(db, 'feeLedgers', studentId), updatedLedger).catch(console.warn);
+
       return {
         ...prev,
-        [studentId]: {
-          ...current,
-          paidAmount: newPaid,
-          balanceDue: newBal,
-          status: newStatus,
-          breakdown: updatedBreakdown,
-          transactions: [newTx, ...current.transactions]
-        }
+        [studentId]: updatedLedger
       };
     });
 
@@ -408,11 +511,13 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
       prev.map((s) => {
         if (s.id !== studentId) return s;
         const currentBal = s.feeDue - amount;
-        return {
+        const updated = {
           ...s,
           feeDue: Math.max(0, currentBal),
-          feeStatus: currentBal <= 0 ? 'paid' : 'partial'
+          feeStatus: currentBal <= 0 ? 'paid' as const : 'partial' as const
         };
+        setDoc(doc(db, 'students', studentId), updated, { merge: true }).catch(console.warn);
+        return updated;
       })
     );
   };
@@ -423,10 +528,12 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
       id: `std-${Date.now()}`
     };
     setStudents((prev) => [newStudent, ...prev]);
+    setDoc(doc(db, 'students', newStudent.id), newStudent).catch(console.warn);
   };
 
   const updateStudent = (student: StudentProfile) => {
     setStudents((prev) => prev.map((s) => (s.id === student.id ? student : s)));
+    setDoc(doc(db, 'students', student.id), student, { merge: true }).catch(console.warn);
     if (currentStudent.id === student.id) {
       setCurrentStudent(student);
     }
@@ -434,6 +541,7 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const deleteStudent = (id: string) => {
     setStudents((prev) => prev.filter((s) => s.id !== id));
+    deleteDoc(doc(db, 'students', id)).catch(console.warn);
   };
 
   const addFaculty = (facultyMember: Omit<FacultyProfile, 'id'>) => {
@@ -442,10 +550,12 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
       id: `fac-${Date.now()}`
     };
     setFaculty((prev) => [newFac, ...prev]);
+    setDoc(doc(db, 'faculty', newFac.id), newFac).catch(console.warn);
   };
 
   const updateFaculty = (facultyMember: FacultyProfile) => {
     setFaculty((prev) => prev.map((f) => (f.id === facultyMember.id ? facultyMember : f)));
+    setDoc(doc(db, 'faculty', facultyMember.id), facultyMember, { merge: true }).catch(console.warn);
     if (currentFaculty.id === facultyMember.id) {
       setCurrentFaculty(facultyMember);
     }
@@ -453,10 +563,12 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const deleteFaculty = (id: string) => {
     setFaculty((prev) => prev.filter((f) => f.id !== id));
+    deleteDoc(doc(db, 'faculty', id)).catch(console.warn);
   };
 
   const addSubject = (subject: Subject) => {
     setSubjects((prev) => [...prev, subject]);
+    setDoc(doc(db, 'subjects', subject.code), subject).catch(console.warn);
   };
 
   const addClassroom = (room: Omit<Classroom, 'id'>) => {
@@ -465,6 +577,7 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
       id: `cr-${Date.now()}`
     };
     setClassrooms((prev) => [...prev, newRoom]);
+    setDoc(doc(db, 'classrooms', newRoom.id), newRoom).catch(console.warn);
   };
 
   const addTimetableSlot = (slot: Omit<TimetableSlot, 'id'>) => {
@@ -473,6 +586,7 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
       id: `tt-${Date.now()}`
     };
     setTimetable((prev) => [...prev, newSlot]);
+    setDoc(doc(db, 'timetable', newSlot.id), newSlot).catch(console.warn);
   };
 
   const markNotificationRead = (id: string) => {
@@ -500,6 +614,7 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
     setCurrentStudent(INITIAL_STUDENTS[0]);
     setCurrentFaculty(INITIAL_FACULTY[0]);
     setCurrentRole('student');
+    initializeFirestoreDatabase().catch(console.warn);
   };
 
   return (
@@ -547,6 +662,7 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
         markNotificationRead,
         clearAllNotifications,
         resetToDemoData,
+        isFirestoreConnected,
         isSearchOpen,
         setIsSearchOpen,
         isAuthenticated,

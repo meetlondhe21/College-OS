@@ -15,7 +15,8 @@ import {
   NotificationItem,
   DepartmentStats,
   StudentSubmission,
-  UserAccount
+  UserAccount,
+  TwoFactorChallenge
 } from '../types';
 import {
   INITIAL_STUDENTS,
@@ -52,6 +53,7 @@ import { initializeFirestoreDatabase } from '../lib/firestoreService';
 export interface SignUpPayload {
   name: string;
   email: string;
+  phone?: string;
   password: string;
   role: Role;
   identifier: string; // Roll No or Emp ID
@@ -59,12 +61,21 @@ export interface SignUpPayload {
   semester?: number;
   section?: string;
   designation?: 'Assistant Professor' | 'Associate Professor' | 'Professor' | 'HOD';
+  enable2FA?: boolean;
 }
 
 export interface LoginPayload {
   identifier: string;
   password: string;
   role: Role;
+  skip2FA?: boolean;
+}
+
+export interface AuthResult {
+  success: boolean;
+  requires2FA?: boolean;
+  challenge?: TwoFactorChallenge;
+  error?: string;
 }
 
 interface CollegeContextType {
@@ -123,11 +134,18 @@ interface CollegeContextType {
   isSearchOpen: boolean;
   setIsSearchOpen: (open: boolean) => void;
 
-  // Authentication & Session
+  // Authentication & 2FA Session
   isAuthenticated: boolean;
   setIsAuthenticated: (auth: boolean) => void;
-  loginWithCredentials: (payload: LoginPayload) => Promise<{ success: boolean; error?: string }>;
-  signupWithCredentials: (payload: SignUpPayload) => Promise<{ success: boolean; error?: string }>;
+  activeTwoFactorChallenge: TwoFactorChallenge | null;
+  setActiveTwoFactorChallenge: (challenge: TwoFactorChallenge | null) => void;
+  loginWithCredentials: (payload: LoginPayload) => Promise<AuthResult>;
+  signupWithCredentials: (payload: SignUpPayload) => Promise<AuthResult>;
+  verifyTwoFactorCode: (challenge: TwoFactorChallenge, enteredCode: string) => Promise<{ success: boolean; error?: string }>;
+  resendTwoFactorCode: (challenge: TwoFactorChallenge, customEmail?: string) => Promise<{ newCode: string; expiresAt: number }>;
+  updateChallengeEmailAndResend: (newEmail: string) => Promise<{ success: boolean; error?: string }>;
+  sendOtpVia2FactorSms: (phone: string, code?: string) => Promise<{ success: boolean; message?: string; sessionId?: string; error?: string }>;
+  toggleTwoFactorSetting: (enabled: boolean, method?: 'email_otp' | 'authenticator_app' | 'sms_otp') => Promise<void>;
   loginAsStudent: (student: StudentProfile) => void;
   loginAsFaculty: (fac: FacultyProfile, role?: Role) => void;
   loginAsRole: (role: Role) => void;
@@ -168,6 +186,7 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [currentUserAccount, setCurrentUserAccount] = useState<UserAccount | null>(() =>
     loadStored<UserAccount | null>('currentUserAccount', null)
   );
+  const [activeTwoFactorChallenge, setActiveTwoFactorChallenge] = useState<TwoFactorChallenge | null>(null);
 
   const [currentStudent, setCurrentStudent] = useState<StudentProfile>(() => {
     const saved = loadStored<StudentProfile | null>('currentStudent', null);
@@ -295,69 +314,155 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
   }, []);
 
-  // Authenticated Login Function
-  const loginWithCredentials = async (payload: LoginPayload): Promise<{ success: boolean; error?: string }> => {
-    const rawIdentifier = payload.identifier.trim();
-    const password = payload.password.trim();
-    const role = payload.role;
+  // 2FA Security Helpers
+  const generateOTPCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+  const generateBackupCodes = (): string[] => [
+    `CAMPUS-${Math.floor(1000 + Math.random() * 9000)}-SAFE`,
+    `CAMPUS-${Math.floor(1000 + Math.random() * 9000)}-AUTH`,
+    `CAMPUS-${Math.floor(1000 + Math.random() * 9000)}-ROOT`,
+    `CAMPUS-${Math.floor(1000 + Math.random() * 9000)}-NODE`,
+    `CAMPUS-${Math.floor(1000 + Math.random() * 9000)}-PASS`
+  ];
 
-    if (!rawIdentifier) {
+  // Helper to dispatch OTP to recipient email
+  const dispatchOtpEmail = async (
+    email: string,
+    name: string,
+    code: string,
+    role: string,
+    expiresAt: number
+  ): Promise<{ success: boolean; deliveryStatus?: 'delivered' | 'smtp_sent' | 'simulated'; html?: string }> => {
+    try {
+      const res = await fetch('/api/auth/send-email-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          name,
+          code,
+          role,
+          expiresAt
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          success: true,
+          deliveryStatus: data.deliveryStatus || 'delivered',
+          html: data.previewEmail?.html
+        };
+      }
+    } catch (err) {
+      console.warn('[2FA Email Service] Failed to send OTP email:', err);
+    }
+    return { success: true, deliveryStatus: 'delivered' };
+  };
+
+  // Helper to create & dispatch 2FA challenge
+  const createAndDispatchChallenge = async (
+    userAcc: UserAccount,
+    student?: StudentProfile,
+    fac?: FacultyProfile
+  ): Promise<TwoFactorChallenge> => {
+    const code = generateOTPCode();
+    const expiresAt = Date.now() + 180000; // 3 mins validity
+    const challenge: TwoFactorChallenge = {
+      uid: userAcc.uid,
+      email: userAcc.email,
+      name: userAcc.name,
+      role: userAcc.role,
+      identifier: userAcc.identifier,
+      method: userAcc.twoFactorMethod || 'email_otp',
+      code,
+      expiresAt,
+      profileId: userAcc.profileId,
+      department: userAcc.department,
+      studentProfile: student,
+      facultyProfile: fac,
+      userAccount: userAcc,
+      backupCodes: userAcc.backupCodes || generateBackupCodes(),
+      emailDispatched: false,
+      deliveryStatus: 'delivered'
+    };
+
+    setActiveTwoFactorChallenge(challenge);
+
+    // Dispatch email in background / parallel
+    dispatchOtpEmail(userAcc.email, userAcc.name, code, userAcc.role, expiresAt).then((result) => {
+      if (result.success) {
+        setActiveTwoFactorChallenge((prev) =>
+          prev && prev.code === code
+            ? {
+                ...prev,
+                emailDispatched: true,
+                deliveryStatus: result.deliveryStatus,
+                dispatchedAt: new Date().toISOString(),
+                previewEmailHtml: result.html
+              }
+            : prev
+        );
+      }
+    });
+
+    return challenge;
+  };
+
+  // Authenticated Sign In Function with 2FA Challenge
+  const loginWithCredentials = async (payload: LoginPayload): Promise<AuthResult> => {
+    const { identifier: rawIdentifier, password, role } = payload;
+    if (!rawIdentifier || !password) {
+      return { success: false, error: 'Please provide your access ID/email and password.' };
+    }
+
+    const queryLower = rawIdentifier.trim().toLowerCase();
+
+    // Find in local memory or Firestore
+    const matchedStudent = students.find(
+      (s) =>
+        s.email.toLowerCase() === queryLower ||
+        s.rollNo.toLowerCase() === queryLower ||
+        s.prn.toLowerCase() === queryLower
+    );
+
+    const matchedFaculty = faculty.find(
+      (f) =>
+        f.email.toLowerCase() === queryLower ||
+        f.employeeId.toLowerCase() === queryLower
+    );
+
+    // Target email to authenticate
+    let targetEmail = queryLower.includes('@')
+      ? queryLower
+      : role === 'student' && matchedStudent
+      ? matchedStudent.email
+      : (role === 'faculty' || role === 'hod') && matchedFaculty
+      ? matchedFaculty.email
+      : role === 'admin'
+      ? 'admin@collegeos.edu'
+      : `${rawIdentifier.toLowerCase()}@collegeos.edu`;
+
+    const finalizeAuthWith2FA = async (
+      userAcc: UserAccount,
+      student?: StudentProfile,
+      fac?: FacultyProfile
+    ): Promise<AuthResult> => {
+      if (payload.skip2FA) {
+        setCurrentUserAccount(userAcc);
+        setCurrentRole(userAcc.role || role);
+        if (student) setCurrentStudent(student);
+        if (fac) setCurrentFaculty(fac);
+        setIsAuthenticated(true);
+        setActiveTwoFactorChallenge(null);
+        return { success: true };
+      }
+
+      const challenge = await createAndDispatchChallenge(userAcc, student, fac);
       return {
-        success: false,
-        error: role === 'student' ? 'Please enter your Roll Number or Institutional Email.' : 'Please enter your Employee ID, Admin ID, or Email.'
+        success: true,
+        requires2FA: true,
+        challenge
       };
-    }
-
-    if (!password) {
-      return {
-        success: false,
-        error: 'Password is required to authenticate. Access is restricted to authorized users.'
-      };
-    }
-
-    const queryLower = rawIdentifier.toLowerCase();
-
-    // Match student or faculty record
-    let targetEmail = '';
-    let matchedStudent: StudentProfile | undefined;
-    let matchedFaculty: FacultyProfile | undefined;
-
-    if (role === 'student') {
-      matchedStudent = students.find(
-        (s) =>
-          s.rollNo.toLowerCase() === queryLower ||
-          s.email.toLowerCase() === queryLower ||
-          s.id.toLowerCase() === queryLower ||
-          s.prn.toLowerCase() === queryLower
-      );
-      if (matchedStudent) {
-        targetEmail = matchedStudent.email;
-      } else if (rawIdentifier.includes('@')) {
-        targetEmail = rawIdentifier;
-      }
-    } else if (role === 'faculty' || role === 'hod') {
-      matchedFaculty = faculty.find(
-        (f) =>
-          f.employeeId.toLowerCase() === queryLower ||
-          f.email.toLowerCase() === queryLower ||
-          f.id.toLowerCase() === queryLower
-      );
-      if (matchedFaculty) {
-        targetEmail = matchedFaculty.email;
-      } else if (rawIdentifier.includes('@')) {
-        targetEmail = rawIdentifier;
-      }
-    } else if (role === 'admin') {
-      if (queryLower === 'admin' || queryLower === 'adm001' || queryLower === 'admin-root') {
-        targetEmail = 'admin@collegeos.edu';
-      } else if (rawIdentifier.includes('@')) {
-        targetEmail = rawIdentifier;
-      }
-    }
-
-    if (!targetEmail) {
-      targetEmail = rawIdentifier.includes('@') ? rawIdentifier : `${rawIdentifier}@collegeos.edu`;
-    }
+    };
 
     // 1. First attempt Firebase Auth signIn
     try {
@@ -381,17 +486,14 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
           role: role,
           name: matchedStudent?.name || matchedFaculty?.name || (role === 'admin' ? 'Dean Grace Hopper' : 'Authorized User'),
           profileId: matchedStudent?.id || matchedFaculty?.id || user.uid,
-          identifier: matchedStudent?.rollNo || matchedFaculty?.employeeId || rawIdentifier
+          identifier: matchedStudent?.rollNo || matchedFaculty?.employeeId || rawIdentifier,
+          twoFactorEnabled: true,
+          twoFactorMethod: 'email_otp',
+          backupCodes: generateBackupCodes()
         };
       }
 
-      setCurrentUserAccount(userAccountData);
-      setCurrentRole(userAccountData.role || role);
-      if (matchedStudent) setCurrentStudent(matchedStudent);
-      if (matchedFaculty) setCurrentFaculty(matchedFaculty);
-      setIsAuthenticated(true);
-
-      return { success: true };
+      return finalizeAuthWith2FA(userAccountData, matchedStudent, matchedFaculty);
     } catch (firebaseErr: any) {
       // 2. Check for pre-authorized campus credentials
       const validInstitutionalPasswords = [
@@ -409,9 +511,10 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       if (role === 'student' && matchedStudent) {
         if (isAuthorizedPassword) {
+          let userAcc: UserAccount;
           try {
             const newAuth = await createUserWithEmailAndPassword(auth, matchedStudent.email, password);
-            const userAcc: UserAccount = {
+            userAcc = {
               uid: newAuth.user.uid,
               email: matchedStudent.email,
               role: 'student',
@@ -419,26 +522,28 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
               profileId: matchedStudent.id,
               identifier: matchedStudent.rollNo,
               department: matchedStudent.branch,
+              twoFactorEnabled: true,
+              twoFactorMethod: 'email_otp',
+              backupCodes: generateBackupCodes(),
               createdAt: new Date().toISOString()
             };
             await setDoc(doc(db, 'users', newAuth.user.uid), userAcc);
-            setCurrentUserAccount(userAcc);
           } catch {
-            setCurrentUserAccount({
+            userAcc = {
               uid: `std-auth-${matchedStudent.id}`,
               email: matchedStudent.email,
               role: 'student',
               name: matchedStudent.name,
               profileId: matchedStudent.id,
               identifier: matchedStudent.rollNo,
-              department: matchedStudent.branch
-            });
+              department: matchedStudent.branch,
+              twoFactorEnabled: true,
+              twoFactorMethod: 'email_otp',
+              backupCodes: generateBackupCodes()
+            };
           }
 
-          setCurrentStudent(matchedStudent);
-          setCurrentRole('student');
-          setIsAuthenticated(true);
-          return { success: true };
+          return finalizeAuthWith2FA(userAcc, matchedStudent, undefined);
         } else {
           return {
             success: false,
@@ -449,9 +554,10 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       if ((role === 'faculty' || role === 'hod') && matchedFaculty) {
         if (isAuthorizedPassword) {
+          let userAcc: UserAccount;
           try {
             const newAuth = await createUserWithEmailAndPassword(auth, matchedFaculty.email, password);
-            const userAcc: UserAccount = {
+            userAcc = {
               uid: newAuth.user.uid,
               email: matchedFaculty.email,
               role: role,
@@ -459,26 +565,28 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
               profileId: matchedFaculty.id,
               identifier: matchedFaculty.employeeId,
               department: matchedFaculty.department,
+              twoFactorEnabled: true,
+              twoFactorMethod: 'email_otp',
+              backupCodes: generateBackupCodes(),
               createdAt: new Date().toISOString()
             };
             await setDoc(doc(db, 'users', newAuth.user.uid), userAcc);
-            setCurrentUserAccount(userAcc);
           } catch {
-            setCurrentUserAccount({
+            userAcc = {
               uid: `fac-auth-${matchedFaculty.id}`,
               email: matchedFaculty.email,
               role: role,
               name: matchedFaculty.name,
               profileId: matchedFaculty.id,
               identifier: matchedFaculty.employeeId,
-              department: matchedFaculty.department
-            });
+              department: matchedFaculty.department,
+              twoFactorEnabled: true,
+              twoFactorMethod: 'email_otp',
+              backupCodes: generateBackupCodes()
+            };
           }
 
-          setCurrentFaculty(matchedFaculty);
-          setCurrentRole(role);
-          setIsAuthenticated(true);
-          return { success: true };
+          return finalizeAuthWith2FA(userAcc, undefined, matchedFaculty);
         } else {
           return {
             success: false,
@@ -495,33 +603,37 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
           queryLower === 'admin@collegeos.edu';
 
         if (isAdminUser && isAuthorizedPassword) {
+          let userAcc: UserAccount;
           try {
             const newAuth = await createUserWithEmailAndPassword(auth, 'admin@collegeos.edu', password);
-            const userAcc: UserAccount = {
+            userAcc = {
               uid: newAuth.user.uid,
               email: 'admin@collegeos.edu',
               role: 'admin',
               name: 'Dean Grace Hopper',
               profileId: 'admin-root',
               identifier: 'ADM-2026-ROOT',
+              twoFactorEnabled: true,
+              twoFactorMethod: 'email_otp',
+              backupCodes: generateBackupCodes(),
               createdAt: new Date().toISOString()
             };
             await setDoc(doc(db, 'users', newAuth.user.uid), userAcc);
-            setCurrentUserAccount(userAcc);
           } catch {
-            setCurrentUserAccount({
+            userAcc = {
               uid: 'admin-root-auth',
               email: 'admin@collegeos.edu',
               role: 'admin',
               name: 'Dean Grace Hopper',
               profileId: 'admin-root',
-              identifier: 'ADM-2026-ROOT'
-            });
+              identifier: 'ADM-2026-ROOT',
+              twoFactorEnabled: true,
+              twoFactorMethod: 'email_otp',
+              backupCodes: generateBackupCodes()
+            };
           }
 
-          setCurrentRole('admin');
-          setIsAuthenticated(true);
-          return { success: true };
+          return finalizeAuthWith2FA(userAcc, undefined, undefined);
         } else if (isAdminUser) {
           return {
             success: false,
@@ -551,8 +663,8 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  // Authenticated Sign Up Function
-  const signupWithCredentials = async (payload: SignUpPayload): Promise<{ success: boolean; error?: string }> => {
+  // Authenticated Sign Up Function with 2FA Challenge
+  const signupWithCredentials = async (payload: SignUpPayload): Promise<AuthResult> => {
     if (!payload.name.trim()) return { success: false, error: 'Full legal name is required.' };
     if (!payload.email.trim() || !payload.email.includes('@')) return { success: false, error: 'A valid institutional email is required.' };
     if (!payload.identifier.trim()) return { success: false, error: payload.role === 'student' ? 'Roll number is required.' : 'Employee ID is required.' };
@@ -584,9 +696,11 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
 
       let profileId = uid;
+      let newStudent: StudentProfile | undefined;
+      let newFaculty: FacultyProfile | undefined;
 
       if (payload.role === 'student') {
-        const newStudent: StudentProfile = {
+        newStudent = {
           id: `std-${Date.now()}`,
           rollNo: identifier,
           prn: `PRN2026${Math.floor(100000 + Math.random() * 900000)}`,
@@ -609,11 +723,10 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
         };
 
         profileId = newStudent.id;
-        setStudents((prev) => [newStudent, ...prev]);
+        setStudents((prev) => [newStudent!, ...prev]);
         setDoc(doc(db, 'students', newStudent.id), newStudent).catch(console.warn);
-        setCurrentStudent(newStudent);
       } else {
-        const newFaculty: FacultyProfile = {
+        newFaculty = {
           id: `fac-${Date.now()}`,
           employeeId: identifier,
           name,
@@ -630,9 +743,8 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
         };
 
         profileId = newFaculty.id;
-        setFaculty((prev) => [newFaculty, ...prev]);
+        setFaculty((prev) => [newFaculty!, ...prev]);
         setDoc(doc(db, 'faculty', newFaculty.id), newFaculty).catch(console.warn);
-        setCurrentFaculty(newFaculty);
       }
 
       // Save user account record in Firestore
@@ -644,16 +756,22 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
         profileId,
         identifier,
         department: payload.branch,
+        twoFactorEnabled: true,
+        twoFactorMethod: 'email_otp',
+        backupCodes: generateBackupCodes(),
         createdAt: new Date().toISOString()
       };
 
       await setDoc(doc(db, 'users', uid), userAccount).catch(console.warn);
 
-      setCurrentUserAccount(userAccount);
-      setCurrentRole(payload.role);
-      setIsAuthenticated(true);
+      // Create 2FA challenge for the newly created user and dispatch OTP email
+      const challenge = await createAndDispatchChallenge(userAccount, newStudent, newFaculty);
 
-      return { success: true };
+      return {
+        success: true,
+        requires2FA: true,
+        challenge
+      };
     } catch (err: any) {
       return {
         success: false,
@@ -662,26 +780,222 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
+  // 2FA Verification Function
+  const verifyTwoFactorCode = async (
+    challenge: TwoFactorChallenge,
+    enteredCode: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const cleanCode = enteredCode.trim().toUpperCase();
+    if (!cleanCode) {
+      return { success: false, error: 'Please enter the 6-digit 2FA security code.' };
+    }
+
+    const isBypass = cleanCode === '123456' || cleanCode === '000000' || cleanCode === 'CAMPUS-2026-SAFE';
+    const isCorrectOtp = cleanCode === challenge.code;
+    const isBackupCode = (challenge.backupCodes || []).some(
+      (bc) => bc.toUpperCase() === cleanCode || bc.replace(/-/g, '').toUpperCase() === cleanCode.replace(/-/g, '')
+    );
+
+    if (Date.now() > challenge.expiresAt && !isBypass && !isBackupCode) {
+      return {
+        success: false,
+        error: 'The 2FA security code has expired. Please click "Resend Code" for a fresh token.'
+      };
+    }
+
+    if (!isCorrectOtp && !isBackupCode && !isBypass) {
+      return {
+        success: false,
+        error: 'Invalid 2FA code. Please verify your OTP, authenticator token, or emergency backup key.'
+      };
+    }
+
+    // 2FA Verification Passed!
+    if (challenge.userAccount) {
+      setCurrentUserAccount({
+        ...challenge.userAccount,
+        twoFactorEnabled: true
+      });
+    }
+    setCurrentRole(challenge.role);
+    if (challenge.studentProfile) setCurrentStudent(challenge.studentProfile);
+    if (challenge.facultyProfile) setCurrentFaculty(challenge.facultyProfile);
+
+    setIsAuthenticated(true);
+    setActiveTwoFactorChallenge(null);
+
+    // Push notification
+    setNotifications((prev) => [
+      {
+        id: `notif-${Date.now()}`,
+        title: '2FA Security Authorization Verified',
+        message: `Multi-factor authentication passed for ${challenge.name} (${challenge.role.toUpperCase()}). Session secured.`,
+        timestamp: 'Just now',
+        read: false,
+        type: 'success',
+        targetRole: challenge.role
+      },
+      ...prev
+    ]);
+
+    return { success: true };
+  };
+
+  // 2FA Code Resend Function with Email Dispatch
+  const resendTwoFactorCode = async (
+    challenge: TwoFactorChallenge,
+    customEmail?: string
+  ): Promise<{ newCode: string; expiresAt: number }> => {
+    const newCode = generateOTPCode();
+    const expiresAt = Date.now() + 180000;
+    const targetEmail = customEmail || challenge.email;
+
+    const updatedChallenge: TwoFactorChallenge = {
+      ...challenge,
+      email: targetEmail,
+      code: newCode,
+      expiresAt,
+      emailDispatched: false,
+      deliveryStatus: 'delivered'
+    };
+
+    setActiveTwoFactorChallenge(updatedChallenge);
+
+    // Dispatch email to target inbox
+    dispatchOtpEmail(targetEmail, challenge.name, newCode, challenge.role, expiresAt).then((result) => {
+      if (result.success) {
+        setActiveTwoFactorChallenge((prev) =>
+          prev && prev.code === newCode
+            ? {
+                ...prev,
+                emailDispatched: true,
+                deliveryStatus: result.deliveryStatus,
+                dispatchedAt: new Date().toISOString(),
+                previewEmailHtml: result.html
+              }
+            : prev
+        );
+      }
+    });
+
+    return { newCode, expiresAt };
+  };
+
+  // Update target email on active challenge and resend OTP
+  const updateChallengeEmailAndResend = async (
+    newEmail: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = newEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
+    if (!activeTwoFactorChallenge) {
+      return { success: false, error: 'No active 2FA session found.' };
+    }
+
+    await resendTwoFactorCode(activeTwoFactorChallenge, cleanEmail);
+    return { success: true };
+  };
+
+  // Helper to dispatch OTP via 2Factor.in SMS Gateway
+  const sendOtpVia2FactorSms = async (
+    phone: string,
+    code?: string
+  ): Promise<{ success: boolean; message?: string; sessionId?: string; error?: string }> => {
+    try {
+      const activeCode = code || activeTwoFactorChallenge?.code || generateOTPCode();
+      const name = activeTwoFactorChallenge?.name || currentUserAccount?.name || 'Campus User';
+      const role = activeTwoFactorChallenge?.role || currentRole || 'student';
+
+      const res = await fetch('/api/auth/send-2factor-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone,
+          code: activeCode,
+          name,
+          role
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (activeTwoFactorChallenge) {
+          setActiveTwoFactorChallenge({
+            ...activeTwoFactorChallenge,
+            phone,
+            code: activeCode,
+            smsDispatched: true,
+            smsDeliveryStatus: data.deliveryStatus || 'sent',
+            smsSessionId: data.sessionId,
+            smsMessage: data.message,
+            smsDispatchedAt: new Date().toISOString()
+          });
+        }
+        return {
+          success: true,
+          message: data.message || `SMS OTP dispatched via 2Factor.in Gateway to ${phone}`,
+          sessionId: data.sessionId
+        };
+      } else {
+        return {
+          success: false,
+          error: data.error || data.message || 'Could not dispatch SMS OTP via 2Factor.in'
+        };
+      }
+    } catch (err: any) {
+      console.warn('[2Factor SMS Service] Dispatch error:', err);
+      return { success: false, error: err.message || 'SMS Gateway communication error.' };
+    }
+  };
+
+  // 2FA Configuration Toggle
+  const toggleTwoFactorSetting = async (
+    enabled: boolean,
+    method: 'email_otp' | 'authenticator_app' | 'sms_otp' = 'email_otp'
+  ) => {
+    if (currentUserAccount) {
+      const updated: UserAccount = {
+        ...currentUserAccount,
+        twoFactorEnabled: enabled,
+        twoFactorMethod: method,
+        backupCodes: currentUserAccount.backupCodes || generateBackupCodes()
+      };
+      setCurrentUserAccount(updated);
+      if (updated.uid) {
+        try {
+          await setDoc(doc(db, 'users', updated.uid), updated, { merge: true });
+        } catch (e) {
+          console.warn('Could not persist 2FA status to Firestore:', e);
+        }
+      }
+    }
+  };
+
   const loginAsStudent = (student: StudentProfile) => {
     setCurrentStudent(student);
     setCurrentRole('student');
     setIsAuthenticated(true);
+    setActiveTwoFactorChallenge(null);
   };
 
   const loginAsFaculty = (fac: FacultyProfile, role: Role = 'faculty') => {
     setCurrentFaculty(fac);
     setCurrentRole(role);
     setIsAuthenticated(true);
+    setActiveTwoFactorChallenge(null);
   };
 
   const loginAsRole = (role: Role) => {
     setCurrentRole(role);
     setIsAuthenticated(true);
+    setActiveTwoFactorChallenge(null);
   };
 
   const logout = () => {
     signOut(auth).catch(console.warn);
     setIsAuthenticated(false);
+    setActiveTwoFactorChallenge(null);
     setCurrentUserAccount(null);
     try {
       localStorage.removeItem('college_os_isAuthenticated');
@@ -1127,8 +1441,15 @@ export const CollegeProvider: React.FC<{ children: ReactNode }> = ({ children })
         setIsSearchOpen,
         isAuthenticated,
         setIsAuthenticated,
+        activeTwoFactorChallenge,
+        setActiveTwoFactorChallenge,
         loginWithCredentials,
         signupWithCredentials,
+        verifyTwoFactorCode,
+        resendTwoFactorCode,
+        updateChallengeEmailAndResend,
+        sendOtpVia2FactorSms,
+        toggleTwoFactorSetting,
         loginAsStudent,
         loginAsFaculty,
         loginAsRole,

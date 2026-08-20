@@ -3,6 +3,7 @@ export type Role = 'student' | 'faculty' | 'hod' | 'admin';
 export interface UserAccount {
   uid: string;
   email: string;
+  phone?: string;
   role: Role;
   name: string;
   profileId: string;
@@ -10,6 +11,37 @@ export interface UserAccount {
   department?: string;
   createdAt?: string;
   avatar?: string;
+  twoFactorEnabled?: boolean;
+  twoFactorMethod?: 'email_otp' | 'authenticator_app' | 'sms_otp';
+  twoFactorSecret?: string;
+  backupCodes?: string[];
+}
+
+export interface TwoFactorChallenge {
+  uid: string;
+  email: string;
+  phone?: string;
+  name: string;
+  role: Role;
+  identifier: string;
+  method: 'email_otp' | 'authenticator_app' | 'sms_otp';
+  code: string;
+  expiresAt: number;
+  profileId: string;
+  department?: string;
+  studentProfile?: StudentProfile;
+  facultyProfile?: FacultyProfile;
+  userAccount?: UserAccount;
+  backupCodes: string[];
+  emailDispatched?: boolean;
+  deliveryStatus?: 'delivered' | 'smtp_sent' | 'simulated';
+  dispatchedAt?: string;
+  previewEmailHtml?: string;
+  smsDispatched?: boolean;
+  smsDeliveryStatus?: 'sent' | 'delivered' | 'failed' | 'simulated';
+  smsSessionId?: string;
+  smsMessage?: string;
+  smsDispatchedAt?: string;
 }
 
 export interface StudentProfile {
@@ -18,6 +50,7 @@ export interface StudentProfile {
   prn: string;
   name: string;
   email: string;
+  phone?: string;
   avatar: string;
   branch: string;
   semester: number;
@@ -39,6 +72,7 @@ export interface FacultyProfile {
   employeeId: string;
   name: string;
   email: string;
+  phone?: string;
   avatar: string;
   designation: 'Assistant Professor' | 'Associate Professor' | 'Professor' | 'HOD';
   department: string;
